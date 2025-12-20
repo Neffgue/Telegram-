@@ -715,11 +715,67 @@ def main():
             )
             return SELECTING_TIME
     
+    # Обработчик для пользовательского времени (работает вне ConversationHandler)
+    async def handle_custom_time_global(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик пользовательского времени, работающий вне ConversationHandler"""
+        if context.user_data.get('waiting_for_custom_time'):
+            user_id = update.effective_user.id
+            time_str = update.message.text.strip()
+            
+            # Проверяем формат времени
+            try:
+                hour, minute = map(int, time_str.split(':'))
+                if 0 <= hour < 24 and 0 <= minute < 60:
+                    time_formatted = f"{hour:02d}:{minute:02d}"
+                    timezone = database.get_user_timezone(user_id)
+                    # При смене времени очищаем отметку о выпитой таблетке сегодня
+                    database.clear_pill_taken_today(user_id)
+                    username = update.effective_user.username or update.effective_user.first_name
+                    database.set_reminder_time(user_id, time_formatted, timezone, username)
+                    database.log_interaction(user_id, "reminder_time_changed", time_formatted, username)
+                    logger.info(f"User {user_id} entered custom time {time_formatted} in timezone {timezone}")
+                    schedule_reminder(user_id, time_formatted, context.application.job_queue, timezone)
+                    
+                    # Сбрасываем флаг
+                    context.user_data['waiting_for_custom_time'] = False
+                    
+                    keyboard = [
+                        [InlineKeyboardButton("⏰ Изменить время", callback_data="change_time_btn")],
+                        [InlineKeyboardButton("⚙️ Настройки", callback_data="settings")],
+                        [InlineKeyboardButton("ℹ️ Информация", callback_data="info_btn")]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    await update.message.reply_text(
+                        f"✅ Отлично, малыш! 💕\n\n"
+                        f"Я буду напоминать тебе каждый день в {time_formatted} ⏰\n\n"
+                        f"Не забудь выпить таблеточку! 💊",
+                        reply_markup=reply_markup
+                    )
+                else:
+                    await update.message.reply_text(
+                        "❌ Время указано неверно. Укажи часы от 0 до 23 и минуты от 0 до 59.\n"
+                        "Попробуй еще раз (формат ЧЧ:ММ):"
+                    )
+            except ValueError:
+                await update.message.reply_text(
+                    "❌ Неверный формат времени. Напиши время в формате ЧЧ:ММ (например, 15:30):"
+                )
+            except Exception as e:
+                logger.error(f"Error handling custom time: {e}", exc_info=True)
+                await update.message.reply_text("❌ Произошла ошибка при обработке времени. Попробуй еще раз.")
+                context.user_data['waiting_for_custom_time'] = False
+    
+    # Добавляем обработчик для пользовательского времени ПЕРЕД обработчиком постоянных кнопок
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND,
+        handle_custom_time_global
+    ), group=0)
+    
     # Добавляем обработчик для постоянных кнопок ПЕРЕД ConversationHandler
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & filters.Regex('^(⏰ Изменить время|⚙️ Настройки|ℹ️ Информация|🏠 Главное меню)$'),
         button_text_handler
-    ))
+    ), group=1)
     
     
     # Создание ConversationHandler для обработки выбора времени
@@ -882,6 +938,9 @@ def main():
                     reply_markup=reply_markup
                 )
         elif data == "back_to_main" or data == "main_menu":
+            # Сбрасываем флаг ожидания пользовательского времени
+            if 'waiting_for_custom_time' in context.user_data:
+                context.user_data['waiting_for_custom_time'] = False
             # Возвращаемся к главному меню
             keyboard = []
             times = [
@@ -918,9 +977,166 @@ def main():
                     "Выбери время, когда тебе удобно получать напоминания: ⏰",
                     reply_markup=reply_markup
                 )
+        elif data.startswith("time_"):
+            # Обработка выбора времени
+            logger.info(f"Time button pressed: {data} from user {query.from_user.id}")
+            time_str = data[5:]  # Убираем префикс "time_"
+            
+            if time_str == "Другое":
+                # Устанавливаем флаг ожидания пользовательского времени
+                context.user_data['waiting_for_custom_time'] = True
+                keyboard = [
+                    [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_main")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                try:
+                    await query.edit_message_text(
+                        "💭 Напиши время в формате ЧЧ:ММ (например, 15:30 или 09:15):",
+                        reply_markup=reply_markup
+                    )
+                except Exception as e:
+                    logger.error(f"Error editing message: {e}")
+                    await query.message.reply_text(
+                        "💭 Напиши время в формате ЧЧ:ММ (например, 15:30 или 09:15):",
+                        reply_markup=reply_markup
+                    )
+            else:
+                # Обрабатываем выбранное время
+                try:
+                    hour, minute = map(int, time_str.split(':'))
+                    if 0 <= hour < 24 and 0 <= minute < 60:
+                        user_id = query.from_user.id
+                        timezone = database.get_user_timezone(user_id)
+                        username = query.from_user.username or query.from_user.first_name
+                        # При смене времени очищаем отметку о выпитой таблетке сегодня
+                        database.clear_pill_taken_today(user_id)
+                        database.set_reminder_time(user_id, time_str, timezone, username)
+                        database.log_interaction(user_id, "reminder_time_changed", time_str, username)
+                        logger.info(f"User {user_id} selected time {time_str} in timezone {timezone}")
+                        schedule_reminder(user_id, time_str, context.application.job_queue, timezone)
+                        
+                        keyboard = [
+                            [InlineKeyboardButton("⏰ Изменить время", callback_data="change_time_btn")],
+                            [InlineKeyboardButton("⚙️ Настройки", callback_data="settings")],
+                            [InlineKeyboardButton("ℹ️ Информация", callback_data="info_btn")]
+                        ]
+                        reply_markup = InlineKeyboardMarkup(keyboard)
+                        try:
+                            await query.edit_message_text(
+                                f"✅ Отлично, малыш! 💕\n\n"
+                                f"Я буду напоминать тебе каждый день в {time_str} ⏰\n\n"
+                                f"Не забудь выпить таблеточку! 💊",
+                                reply_markup=reply_markup
+                            )
+                        except Exception as e:
+                            logger.error(f"Error editing message: {e}")
+                            await query.message.reply_text(
+                                f"✅ Отлично, малыш! 💕\n\n"
+                                f"Я буду напоминать тебе каждый день в {time_str} ⏰\n\n"
+                                f"Не забудь выпить таблеточку! 💊",
+                                reply_markup=reply_markup
+                            )
+                    else:
+                        keyboard = [
+                            [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_main")]
+                        ]
+                        reply_markup = InlineKeyboardMarkup(keyboard)
+                        try:
+                            await query.edit_message_text(
+                                "❌ Время указано неверно. Попробуй еще раз:",
+                                reply_markup=reply_markup
+                            )
+                        except Exception as e:
+                            logger.error(f"Error editing message: {e}")
+                            await query.message.reply_text(
+                                "❌ Время указано неверно. Попробуй еще раз:",
+                                reply_markup=reply_markup
+                            )
+                except ValueError as e:
+                    logger.error(f"Error parsing time {time_str}: {e}")
+                    keyboard = [
+                        [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_main")]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    try:
+                        await query.edit_message_text(
+                            "❌ Неверный формат времени. Попробуй еще раз.",
+                            reply_markup=reply_markup
+                        )
+                    except Exception as e2:
+                        logger.error(f"Error editing message: {e2}")
+                        await query.message.reply_text(
+                            "❌ Неверный формат времени. Попробуй еще раз.",
+                            reply_markup=reply_markup
+                        )
+        elif data == "test_notification":
+            # Тестовое уведомление
+            username = query.from_user.username or query.from_user.first_name
+            database.log_interaction(query.from_user.id, "test_notification", None, username)
+            reminder_message = "💊 Выпей таблетку, малыш. Люблю тебя, хорошего дня! 💕"
+            keyboard = [
+                [InlineKeyboardButton("💖 Я уже выпила таблетку, любимый", callback_data="pill_taken")],
+                [InlineKeyboardButton("⬅️ Назад", callback_data="settings")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            try:
+                await query.edit_message_text(reminder_message, reply_markup=reply_markup)
+            except Exception as e:
+                logger.error(f"Error editing message: {e}")
+                await query.message.reply_text(reminder_message, reply_markup=reply_markup)
+        elif data == "select_city":
+            # Выбор города
+            keyboard = [
+                [InlineKeyboardButton("🏙️ Санкт-Петербург (UTC+3)", callback_data="city_spb")],
+                [InlineKeyboardButton("🏔️ Уфа (UTC+5)", callback_data="city_ufa")],
+                [InlineKeyboardButton("⬅️ Назад", callback_data="settings")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            try:
+                await query.edit_message_text(
+                    "🌍 Выбери город для установки часового пояса:",
+                    reply_markup=reply_markup
+                )
+            except Exception as e:
+                logger.error(f"Error editing message: {e}")
+                await query.message.reply_text(
+                    "🌍 Выбери город для установки часового пояса:",
+                    reply_markup=reply_markup
+                )
+        elif data == "city_spb" or data == "city_ufa":
+            # Установка часового пояса
+            user_id = query.from_user.id
+            if data == "city_spb":
+                timezone = 'Europe/Moscow'
+                city_name = "Санкт-Петербург (UTC+3)"
+            else:
+                timezone = 'Asia/Yekaterinburg'
+                city_name = "Уфа (UTC+5)"
+            
+            username = query.from_user.username or query.from_user.first_name
+            database.set_user_timezone(user_id, timezone, username)
+            database.log_interaction(user_id, "timezone_changed", city_name, username)
+            
+            # Перепланируем напоминание с новым часовым поясом
+            reminder_time = database.get_reminder_time(user_id)
+            if reminder_time:
+                schedule_reminder(user_id, reminder_time, context.application.job_queue, timezone)
+            
+            try:
+                await query.edit_message_text(
+                    f"✅ Часовой пояс изменен на {city_name} 🌍\n\n"
+                    f"Напоминания теперь будут приходить согласно этому часовому поясу. 💕"
+                )
+            except Exception as e:
+                logger.error(f"Error editing message: {e}")
+                await query.message.reply_text(
+                    f"✅ Часовой пояс изменен на {city_name} 🌍\n\n"
+                    f"Напоминания теперь будут приходить согласно этому часовому поясу. 💕"
+                )
     
     # Добавляем глобальный обработчик для inline кнопок (добавляем ПЕРЕД ConversationHandler)
-    application.add_handler(CallbackQueryHandler(global_button_callback, pattern='^(change_time_btn|settings|info_btn|back_to_main|main_menu)$'))
+    # Включаем обработку кнопок времени (time_*), чтобы они работали всегда
+    application.add_handler(CallbackQueryHandler(global_button_callback, pattern='^(change_time_btn|settings|info_btn|back_to_main|main_menu|time_|test_notification|select_city|city_)'))
     
     # Тестовая команда для проверки напоминаний
     async def test_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE):
