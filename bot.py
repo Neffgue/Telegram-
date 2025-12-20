@@ -86,11 +86,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard.append([InlineKeyboardButton("⚙️ Настройки", callback_data="settings")])
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(
-        welcome_message,
-        reply_markup=reply_markup,
-        parse_mode='HTML'
-    )
+    try:
+        await update.message.reply_text(
+            welcome_message,
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
+        # Отправляем постоянную клавиатуру
+        await update.message.reply_text(
+            "Используй кнопки ниже для навигации:",
+            reply_markup=get_main_keyboard()
+        )
+        logger.info(f"Start message sent successfully to user {user_id}")
+    except Exception as e:
+        logger.error(f"Error sending start message to user {user_id}: {e}", exc_info=True)
+        # Пробуем отправить без parse_mode
+        try:
+            await update.message.reply_text(welcome_message, reply_markup=reply_markup)
+            await update.message.reply_text("Используй кнопки ниже для навигации:", reply_markup=get_main_keyboard())
+        except Exception as e2:
+            logger.error(f"Error sending start message (second attempt) to user {user_id}: {e2}", exc_info=True)
     
     return SELECTING_TIME
 
@@ -706,15 +721,6 @@ def main():
         button_text_handler
     ))
     
-    # Добавляем обработчик для всех команд для отладки (добавляем ПЕРЕД ConversationHandler)
-    async def debug_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик для отладки команд"""
-        if update.message and update.message.text:
-            command = update.message.text.split()[0] if update.message.text else None
-            logger.info(f"DEBUG: Command received: {command} from user {update.effective_user.id}")
-    
-    # Добавляем этот обработчик с низким приоритетом для логирования
-    application.add_handler(MessageHandler(filters.COMMAND, debug_command_handler), group=-1)
     
     # Создание ConversationHandler для обработки выбора времени
     conv_handler = ConversationHandler(
@@ -970,16 +976,6 @@ def main():
     
     application.add_handler(CommandHandler('export', export_data))
     
-    # Добавляем обработчик для логирования всех обновлений (для отладки)
-    async def log_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Логирует все обновления для отладки"""
-        if update.message:
-            logger.info(f"Received message: {update.message.text} from user {update.effective_user.id}")
-        elif update.callback_query:
-            logger.info(f"Received callback: {update.callback_query.data} from user {update.effective_user.id}")
-    
-    # Добавляем этот обработчик в конец (низкий приоритет)
-    application.add_handler(MessageHandler(filters.ALL, log_update), group=99)
     
     # Добавление обработчиков
     application.add_handler(conv_handler)
