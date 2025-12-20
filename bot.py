@@ -706,6 +706,16 @@ def main():
         button_text_handler
     ))
     
+    # Добавляем обработчик для всех команд для отладки (добавляем ПЕРЕД ConversationHandler)
+    async def debug_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик для отладки команд"""
+        if update.message and update.message.text:
+            command = update.message.text.split()[0] if update.message.text else None
+            logger.info(f"DEBUG: Command received: {command} from user {update.effective_user.id}")
+    
+    # Добавляем этот обработчик с низким приоритетом для логирования
+    application.add_handler(MessageHandler(filters.COMMAND, debug_command_handler), group=-1)
+    
     # Создание ConversationHandler для обработки выбора времени
     conv_handler = ConversationHandler(
         entry_points=[
