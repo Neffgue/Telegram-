@@ -30,7 +30,7 @@ def health():
 def run_bot_in_thread():
     """Запускает бота в отдельном потоке"""
     try:
-        from telegram.ext import Application, Update
+        from telegram.ext import Application
         import bot
         import config
         
