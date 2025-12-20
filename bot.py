@@ -44,6 +44,7 @@ def get_main_keyboard():
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
+    logger.info(f"Start command received from user {update.effective_user.id}")
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name
     database.log_interaction(user_id, "start_command", None, username)
@@ -959,8 +960,22 @@ def main():
     
     application.add_handler(CommandHandler('export', export_data))
     
+    # Добавляем обработчик для логирования всех обновлений (для отладки)
+    async def log_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Логирует все обновления для отладки"""
+        if update.message:
+            logger.info(f"Received message: {update.message.text} from user {update.effective_user.id}")
+        elif update.callback_query:
+            logger.info(f"Received callback: {update.callback_query.data} from user {update.effective_user.id}")
+    
+    # Добавляем этот обработчик в конец (низкий приоритет)
+    application.add_handler(MessageHandler(filters.ALL, log_update), group=99)
+    
     # Добавление обработчиков
     application.add_handler(conv_handler)
+    
+    # Логируем количество зарегистрированных обработчиков
+    logger.info(f"Total handlers registered: {len(application.handlers[0])}")
     
     # Загрузка существующих напоминаний через post_init
     async def post_init(app: Application) -> None:
@@ -972,6 +987,7 @@ def main():
     
     # Запуск бота
     logger.info("Bot is starting...")
+    logger.info("Handlers registered, starting polling...")
     application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 def create_and_setup_application():

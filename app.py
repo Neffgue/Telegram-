@@ -46,9 +46,12 @@ def run_bot_in_thread():
             async def run():
                 async with self:
                     await self.start()
+                    logger.info(f"Application started, handlers count: {len(self.handlers[0])}")
                     # Явно вызываем post_init если он установлен
                     if hasattr(self, 'post_init') and self.post_init:
+                        logger.info("Calling post_init...")
                         await self.post_init(self)
+                    logger.info("Starting polling...")
                     await self.updater.start_polling(*args, **kwargs)
                     logger.info("Bot is running in thread...")
                     # Ожидаем бесконечно без обработки сигналов
