@@ -718,7 +718,11 @@ def main():
     # Обработчик для пользовательского времени (работает вне ConversationHandler)
     async def handle_custom_time_global(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик пользовательского времени, работающий вне ConversationHandler"""
-        if context.user_data.get('waiting_for_custom_time'):
+        # Проверяем, ожидается ли пользовательский ввод времени
+        if not context.user_data.get('waiting_for_custom_time'):
+            return  # Если флаг не установлен, ничего не делаем
+        
+        # Если флаг установлен, обрабатываем пользовательский ввод
             user_id = update.effective_user.id
             time_str = update.message.text.strip()
             
