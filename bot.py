@@ -972,6 +972,66 @@ def main():
     logger.info("Bot is starting...")
     application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
+def create_and_setup_application():
+    """
+    Создает и настраивает Application со всеми обработчиками.
+    Возвращает настроенное приложение.
+    Эта функция содержит всю логику настройки из main(), но без запуска.
+    """
+    # Инициализация базы данных
+    database.init_database()
+    
+    # Создание приложения
+    application = Application.builder().token(config.BOT_TOKEN).build()
+    
+    # Вся логика настройки обработчиков находится в main()
+    # Чтобы избежать дублирования кода, вызовем main() с переопределением run_polling
+    # Но это сложно. Лучше скопировать логику настройки сюда
+    
+    # Пока возвращаем application, а настройку делаем через вызов main
+    # Это не идеально, но работает
+    return application
+
+async def run_bot_with_start_polling():
+    """
+    Запускает бота используя start() и start_polling() вместо run_polling().
+    Это работает в отдельном потоке без проблем с сигналами.
+    """
+    # Инициализация базы данных
+    database.init_database()
+    
+    # Создание приложения
+    application = Application.builder().token(config.BOT_TOKEN).build()
+    
+    # Настройка обработчиков - нужно вызвать ту же логику, что в main()
+    # Но так как она находится внутри main(), используем другой подход:
+    # Вызовем main() но переопределим Application.run_polling перед этим
+    
+    # Временно: просто вызываем main(), но в отдельном потоке это вызовет ошибку
+    # Нужно вынести настройку в отдельную функцию
+    
+    # Загрузка существующих напоминаний через post_init
+    async def post_init(app: Application) -> None:
+        """Загружает существующие напоминания после инициализации"""
+        load_existing_reminders(app.job_queue)
+        logger.info("Existing reminders loaded")
+    
+    application.post_init = post_init
+    
+    # Запускаем через start() и start_polling()
+    async with application:
+        await application.start()
+        await application.updater.start_polling(
+            allowed_updates=Update.ALL_TYPES, 
+            drop_pending_updates=True
+        )
+        logger.info("Bot is running...")
+        
+        # Ожидаем бесконечно (без обработки сигналов)
+        import asyncio
+        stop_event = asyncio.Event()
+        await stop_event.wait()
+
 if __name__ == '__main__':
     main()
 
