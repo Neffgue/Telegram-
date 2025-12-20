@@ -709,6 +709,8 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
+            CommandHandler('Start', start),
+            CommandHandler('START', start),
             CommandHandler('mur', start),
             CommandHandler('mur_time', change_time),
             MessageHandler(filters.Regex('^⏰ Изменить время$'), change_time)
