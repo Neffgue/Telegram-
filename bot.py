@@ -794,7 +794,8 @@ def main():
         ],
         states={
             SELECTING_TIME: [
-                CallbackQueryHandler(button_callback, pattern='^(time_|settings|test_notification|select_city|city_|back_to_main|change_time_btn|info_btn|main_menu)')
+                # Убираем select_city и city_ из паттерна, чтобы они обрабатывались глобальным обработчиком
+                CallbackQueryHandler(button_callback, pattern='^(time_|settings|test_notification|back_to_main|change_time_btn|info_btn|main_menu)')
             ],
             CONFIRMING_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_time)]
         },
@@ -834,6 +835,7 @@ def main():
         
         await query.answer()
         data = query.data
+        logger.info(f"Global button callback received: {data} from user {query.from_user.id}")
         
         # Обрабатываем кнопки, которые должны работать вне ConversationHandler
         if data == "change_time_btn":
@@ -1090,6 +1092,7 @@ def main():
                 await query.message.reply_text(reminder_message, reply_markup=reply_markup)
         elif data == "select_city":
             # Выбор города
+            logger.info(f"select_city button pressed by user {query.from_user.id}")
             keyboard = [
                 [InlineKeyboardButton("🏙️ Санкт-Петербург (UTC+3)", callback_data="city_spb")],
                 [InlineKeyboardButton("🏔️ Уфа (UTC+5)", callback_data="city_ufa")],
@@ -1102,13 +1105,14 @@ def main():
                     reply_markup=reply_markup
                 )
             except Exception as e:
-                logger.error(f"Error editing message: {e}")
+                logger.error(f"Error editing message: {e}", exc_info=True)
                 await query.message.reply_text(
                     "🌍 Выбери город для установки часового пояса:",
                     reply_markup=reply_markup
                 )
         elif data == "city_spb" or data == "city_ufa":
             # Установка часового пояса
+            logger.info(f"City button pressed: {data} by user {query.from_user.id}")
             user_id = query.from_user.id
             if data == "city_spb":
                 timezone = 'Europe/Moscow'
@@ -1131,8 +1135,9 @@ def main():
                     f"✅ Часовой пояс изменен на {city_name} 🌍\n\n"
                     f"Напоминания теперь будут приходить согласно этому часовому поясу. 💕"
                 )
+                logger.info(f"Timezone changed to {city_name} for user {user_id}")
             except Exception as e:
-                logger.error(f"Error editing message: {e}")
+                logger.error(f"Error editing message: {e}", exc_info=True)
                 await query.message.reply_text(
                     f"✅ Часовой пояс изменен на {city_name} 🌍\n\n"
                     f"Напоминания теперь будут приходить согласно этому часовому поясу. 💕"
