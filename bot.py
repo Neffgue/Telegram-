@@ -718,62 +718,69 @@ def main():
     # Обработчик для пользовательского времени (работает вне ConversationHandler)
     async def handle_custom_time_global(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик пользовательского времени, работающий вне ConversationHandler"""
+        user_id = update.effective_user.id
+        text = update.message.text if update.message else None
+        logger.info(f"handle_custom_time_global called for user {user_id}, text: {text}, waiting_for_custom_time: {context.user_data.get('waiting_for_custom_time')}")
+        
         # Проверяем, ожидается ли пользовательский ввод времени
         if not context.user_data.get('waiting_for_custom_time'):
+            logger.info(f"handle_custom_time_global: waiting_for_custom_time is False for user {user_id}, skipping")
             return  # Если флаг не установлен, ничего не делаем
         
         # Если флаг установлен, обрабатываем пользовательский ввод
-            user_id = update.effective_user.id
-            time_str = update.message.text.strip()
-            
-            # Проверяем формат времени
-            try:
-                hour, minute = map(int, time_str.split(':'))
-                if 0 <= hour < 24 and 0 <= minute < 60:
-                    time_formatted = f"{hour:02d}:{minute:02d}"
-                    timezone = database.get_user_timezone(user_id)
-                    # При смене времени очищаем отметку о выпитой таблеточке сегодня
-                    database.clear_pill_taken_today(user_id)
-                    username = update.effective_user.username or update.effective_user.first_name
-                    database.set_reminder_time(user_id, time_formatted, timezone, username)
-                    database.log_interaction(user_id, "reminder_time_changed", time_formatted, username)
-                    logger.info(f"User {user_id} entered custom time {time_formatted} in timezone {timezone}")
-                    schedule_reminder(user_id, time_formatted, context.application.job_queue, timezone)
-                    
-                    # Сбрасываем флаг
-                    context.user_data['waiting_for_custom_time'] = False
-                    
-                    keyboard = [
-                        [InlineKeyboardButton("⏰ Изменить время", callback_data="change_time_btn")],
-                        [InlineKeyboardButton("⚙️ Настройки", callback_data="settings")],
-                        [InlineKeyboardButton("ℹ️ Информация", callback_data="info_btn")]
-                    ]
-                    reply_markup = InlineKeyboardMarkup(keyboard)
-                    await update.message.reply_text(
-                        f"✅ Отлично, малыш! 💕\n\n"
-                        f"Я буду напоминать тебе каждый день в {time_formatted} ⏰\n\n"
-                        f"Не забудь выпить таблеточку! 💊",
-                        reply_markup=reply_markup
-                    )
-                else:
-                    await update.message.reply_text(
-                        "❌ Время указано неверно. Укажи часы от 0 до 23 и минуты от 0 до 59.\n"
-                        "Попробуй еще раз (формат ЧЧ:ММ):"
-                    )
-            except ValueError:
-                await update.message.reply_text(
-                    "❌ Неверный формат времени. Напиши время в формате ЧЧ:ММ (например, 15:30):"
-                )
-            except Exception as e:
-                logger.error(f"Error handling custom time: {e}", exc_info=True)
-                await update.message.reply_text("❌ Произошла ошибка при обработке времени. Попробуй еще раз.")
+        logger.info(f"handle_custom_time_global: processing custom time input from user {update.effective_user.id}")
+        user_id = update.effective_user.id
+        time_str = update.message.text.strip()
+        
+        # Проверяем формат времени
+        try:
+            hour, minute = map(int, time_str.split(':'))
+            if 0 <= hour < 24 and 0 <= minute < 60:
+                time_formatted = f"{hour:02d}:{minute:02d}"
+                timezone = database.get_user_timezone(user_id)
+                # При смене времени очищаем отметку о выпитой таблеточке сегодня
+                database.clear_pill_taken_today(user_id)
+                username = update.effective_user.username or update.effective_user.first_name
+                database.set_reminder_time(user_id, time_formatted, timezone, username)
+                database.log_interaction(user_id, "reminder_time_changed", time_formatted, username)
+                logger.info(f"User {user_id} entered custom time {time_formatted} in timezone {timezone}")
+                schedule_reminder(user_id, time_formatted, context.application.job_queue, timezone)
+                
+                # Сбрасываем флаг
                 context.user_data['waiting_for_custom_time'] = False
+                
+                keyboard = [
+                    [InlineKeyboardButton("⏰ Изменить время", callback_data="change_time_btn")],
+                    [InlineKeyboardButton("⚙️ Настройки", callback_data="settings")],
+                    [InlineKeyboardButton("ℹ️ Информация", callback_data="info_btn")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.message.reply_text(
+                    f"✅ Отлично, малыш! 💕\n\n"
+                    f"Я буду напоминать тебе каждый день в {time_formatted} ⏰\n\n"
+                    f"Не забудь выпить таблеточку! 💊",
+                    reply_markup=reply_markup
+                )
+            else:
+                await update.message.reply_text(
+                    "❌ Время указано неверно. Укажи часы от 0 до 23 и минуты от 0 до 59.\n"
+                    "Попробуй еще раз (формат ЧЧ:ММ):"
+                )
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Неверный формат времени. Напиши время в формате ЧЧ:ММ (например, 15:30):"
+            )
+        except Exception as e:
+            logger.error(f"Error handling custom time: {e}", exc_info=True)
+            await update.message.reply_text("❌ Произошла ошибка при обработке времени. Попробуй еще раз.")
+            context.user_data['waiting_for_custom_time'] = False
     
     # Добавляем обработчик для пользовательского времени ПЕРЕД обработчиком постоянных кнопок
+    # Используем group=-1 чтобы он обрабатывался ДО ConversationHandler
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND,
         handle_custom_time_global
-    ), group=0)
+    ), group=-1)
     
     # Добавляем обработчик для постоянных кнопок ПЕРЕД ConversationHandler
     application.add_handler(MessageHandler(
@@ -991,6 +998,7 @@ def main():
             if time_str == "Другое":
                 # Устанавливаем флаг ожидания пользовательского времени
                 context.user_data['waiting_for_custom_time'] = True
+                logger.info(f"Set waiting_for_custom_time=True for user {query.from_user.id}")
                 keyboard = [
                     [InlineKeyboardButton("⬅️ Назад", callback_data="back_to_main")]
                 ]
