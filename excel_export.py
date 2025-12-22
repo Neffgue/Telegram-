@@ -122,9 +122,9 @@ def export_to_excel(filename: str = None):
         ws_interactions.column_dimensions[column_letter].width = adjusted_width
     
     # Создаем лист с историей принятых таблеток
-    ws_pills = wb.create_sheet("Принятые таблетки")
+    ws_pills = wb.create_sheet("Принятые таблеточки")
     
-    # Получаем данные о принятых таблетках
+    # Получаем данные о принятых таблеточках
     import sqlite3
     conn = sqlite3.connect(database.DATABASE_NAME)
     cursor = conn.cursor()
@@ -155,7 +155,7 @@ def export_to_excel(filename: str = None):
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center", vertical="center")
     
-    # Записываем данные о таблетках
+    # Записываем данные о таблеточках
     for row_num, pill_data in enumerate(pills_data, 2):
         ws_pills.cell(row=row_num, column=1, value=pill_data[0])  # user_id
         ws_pills.cell(row=row_num, column=2, value=pill_data[1] or "Не указан")  # username

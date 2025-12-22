@@ -143,7 +143,7 @@ def get_all_users_with_reminders():
     return results
 
 def mark_pill_taken(user_id: int, date: str):
-    """Отмечает, что пользователь выпил таблетку в указанную дату"""
+    """Отмечает, что пользователь выпил таблеточку в указанную дату"""
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     
@@ -156,7 +156,7 @@ def mark_pill_taken(user_id: int, date: str):
     conn.close()
 
 def is_pill_taken_today(user_id: int) -> bool:
-    """Проверяет, выпил ли пользователь таблетку сегодня"""
+    """Проверяет, выпил ли пользователь таблеточку сегодня"""
     from datetime import date
     today = date.today().isoformat()
     
@@ -174,7 +174,7 @@ def is_pill_taken_today(user_id: int) -> bool:
     return result is not None
 
 def clear_pill_taken_today(user_id: int):
-    """Очищает отметку о выпитой таблетке на сегодня"""
+    """Очищает отметку о выпитой таблеточке на сегодня"""
     from datetime import date
     today = date.today().isoformat()
     
@@ -190,7 +190,7 @@ def clear_pill_taken_today(user_id: int):
     conn.close()
 
 def get_days_count(user_id: int) -> int:
-    """Получает количество дней использования бота (количество записей о выпитых таблетках)"""
+    """Получает количество дней использования бота (количество записей о выпитых таблеточках)"""
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     

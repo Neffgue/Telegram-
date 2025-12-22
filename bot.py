@@ -1,5 +1,5 @@
 """
-Telegram бот для ежедневных напоминаний о таблетках
+Telegram бот для ежедневных напоминаний о таблеточках
 """
 import logging
 
@@ -141,10 +141,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         database.log_interaction(query.from_user.id, "test_notification", None, username)
         # Отправляем тестовое уведомление
         reminder_message = (
-            "💊 Выпей таблетку, малыш. Люблю тебя, хорошего дня! 💕"
+            "💊 Выпей таблеточку, малыш. Люблю тебя, хорошего дня! 💕"
         )
         keyboard = [
-            [InlineKeyboardButton("💖 Я уже выпила таблетку, любимый", callback_data="pill_taken")],
+            [InlineKeyboardButton("💖 Я уже выпила таблеточку, любимый", callback_data="pill_taken")],
             [InlineKeyboardButton("⬅️ Назад", callback_data="settings")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -281,7 +281,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         info_message = (
             f"ℹ️ Информация о твоем использовании бота:\n\n"
-            f"📊 Количество дней, когда ты пила таблетку с помощью бота: {days_count} дней\n\n"
+            f"📊 Количество дней, когда ты пила таблеточку с помощью бота: {days_count} дней\n\n"
         )
         
         if first_date:
@@ -340,7 +340,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if 0 <= hour < 24 and 0 <= minute < 60:
                     timezone = database.get_user_timezone(user_id)
                     username = query.from_user.username or query.from_user.first_name
-                    # При смене времени очищаем отметку о выпитой таблетке сегодня
+                    # При смене времени очищаем отметку о выпитой таблеточке сегодня
                     database.clear_pill_taken_today(user_id)
                     database.set_reminder_time(user_id, time_str, timezone, username)
                     database.log_interaction(user_id, "reminder_time_changed", time_str, username)
@@ -395,7 +395,7 @@ async def handle_custom_time(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if 0 <= hour < 24 and 0 <= minute < 60:
             time_formatted = f"{hour:02d}:{minute:02d}"
             timezone = database.get_user_timezone(user_id)
-            # При смене времени очищаем отметку о выпитой таблетке сегодня
+            # При смене времени очищаем отметку о выпитой таблеточке сегодня
             database.clear_pill_taken_today(user_id)
             username = update.effective_user.username or update.effective_user.first_name
             database.set_reminder_time(user_id, time_formatted, timezone, username)
@@ -441,7 +441,7 @@ async def info_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     info_message = (
         f"ℹ️ Информация о твоем использовании бота:\n\n"
-        f"📊 Количество дней, когда ты пила таблетку с помощью бота: {days_count} дней\n\n"
+        f"📊 Количество дней, когда ты пила таблеточку с помощью бота: {days_count} дней\n\n"
     )
     
     if first_date:
@@ -539,18 +539,18 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE):
     """Отправка напоминания пользователю"""
     user_id = context.job.data
     
-    # Проверяем, не выпила ли уже таблетку сегодня
+    # Проверяем, не выпила ли уже таблеточку сегодня
     if database.is_pill_taken_today(user_id):
         logger.info(f"User {user_id} already took pill today, skipping reminder")
         return
     
     reminder_message = (
-        "💊 Выпей таблетку, малыш. Люблю тебя, хорошего дня! 💕"
+        "💊 Выпей таблеточку, малыш. Люблю тебя, хорошего дня! 💕"
     )
     
-    # Создаем клавиатуру с кнопкой "Я уже выпила таблетку"
+    # Создаем клавиатуру с кнопкой "Я уже выпила таблеточку"
     keyboard = [
-        [InlineKeyboardButton("💖 Я уже выпила таблетку, любимый", callback_data="pill_taken")],
+        [InlineKeyboardButton("💖 Я уже выпила таблеточку, любимый", callback_data="pill_taken")],
         [InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_main")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -732,7 +732,7 @@ def main():
                 if 0 <= hour < 24 and 0 <= minute < 60:
                     time_formatted = f"{hour:02d}:{minute:02d}"
                     timezone = database.get_user_timezone(user_id)
-                    # При смене времени очищаем отметку о выпитой таблетке сегодня
+                    # При смене времени очищаем отметку о выпитой таблеточке сегодня
                     database.clear_pill_taken_today(user_id)
                     username = update.effective_user.username or update.effective_user.first_name
                     database.set_reminder_time(user_id, time_formatted, timezone, username)
@@ -802,9 +802,9 @@ def main():
         fallbacks=[CommandHandler('cancel', cancel)]
     )
     
-    # Отдельный обработчик для кнопки "Я уже выпила таблетку" (работает всегда, добавляем ПЕРЕД conv_handler)
+    # Отдельный обработчик для кнопки "Я уже выпила таблеточку" (работает всегда, добавляем ПЕРЕД conv_handler)
     async def pill_taken_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик кнопки 'Я уже выпила таблетку'"""
+        """Обработчик кнопки 'Я уже выпила таблеточку'"""
         query = update.callback_query
         if query and query.data == "pill_taken":
             await query.answer()
@@ -908,7 +908,7 @@ def main():
             
             info_message = (
                 f"ℹ️ Информация о твоем использовании бота:\n\n"
-                f"📊 Количество дней, когда ты пила таблетку с помощью бота: {days_count} дней\n\n"
+                f"📊 Количество дней, когда ты пила таблеточку с помощью бота: {days_count} дней\n\n"
             )
             
             if first_date:
@@ -1014,7 +1014,7 @@ def main():
                         user_id = query.from_user.id
                         timezone = database.get_user_timezone(user_id)
                         username = query.from_user.username or query.from_user.first_name
-                        # При смене времени очищаем отметку о выпитой таблетке сегодня
+                        # При смене времени очищаем отметку о выпитой таблеточке сегодня
                         database.clear_pill_taken_today(user_id)
                         database.set_reminder_time(user_id, time_str, timezone, username)
                         database.log_interaction(user_id, "reminder_time_changed", time_str, username)
@@ -1079,9 +1079,9 @@ def main():
             # Тестовое уведомление
             username = query.from_user.username or query.from_user.first_name
             database.log_interaction(query.from_user.id, "test_notification", None, username)
-            reminder_message = "💊 Выпей таблетку, малыш. Люблю тебя, хорошего дня! 💕"
+            reminder_message = "💊 Выпей таблеточку, малыш. Люблю тебя, хорошего дня! 💕"
             keyboard = [
-                [InlineKeyboardButton("💖 Я уже выпила таблетку, любимый", callback_data="pill_taken")],
+                [InlineKeyboardButton("💖 Я уже выпила таблеточку, любимый", callback_data="pill_taken")],
                 [InlineKeyboardButton("⬅️ Назад", callback_data="settings")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1152,12 +1152,12 @@ def main():
         """Тестовая команда для проверки отправки напоминания"""
         user_id = update.effective_user.id
         reminder_message = (
-            "💊 Выпей таблетку, малыш. Люблю тебя, хорошего дня! 💕"
+            "💊 Выпей таблеточку, малыш. Люблю тебя, хорошего дня! 💕"
         )
         
-        # Создаем клавиатуру с кнопкой "Я уже выпила таблетку"
+        # Создаем клавиатуру с кнопкой "Я уже выпила таблеточку"
         keyboard = [
-            [InlineKeyboardButton("💖 Я уже выпила таблетку, любимый", callback_data="pill_taken")],
+            [InlineKeyboardButton("💖 Я уже выпила таблеточку, любимый", callback_data="pill_taken")],
             [InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_main")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1185,7 +1185,7 @@ def main():
                             "Файл содержит:\n"
                             "• Информацию о пользователях\n"
                             "• Историю взаимодействий\n"
-                            "• Данные о принятых таблетках"
+                            "• Данные о принятых таблеточках"
                 )
             
             # Удаляем временный файл
