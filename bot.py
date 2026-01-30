@@ -33,7 +33,7 @@ logging.getLogger('apscheduler.scheduler').setLevel(logging.WARNING)
 # Состояния для ConversationHandler
 SELECTING_TIME, CONFIRMING_TIME = range(2)
 
-MEMO_BUTTON_TEXT = "🎧 Получить памятку"
+MEMO_BUTTON_TEXT = "💗 Получить памяточку по носику"
 
 # Создаем постоянную клавиатуру с кнопками меню
 def get_main_keyboard():
@@ -676,7 +676,7 @@ def main():
         return user_id in getattr(config, 'ADMIN_USER_IDS', set())
 
     async def admin_voice_upload_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Админ отправляет voice -> сохраняем как памятку"""
+        """Админ отправляет voice -> сохраняем как памяточку"""
         if not update.message or not update.message.voice:
             return
         user_id = update.effective_user.id
@@ -690,21 +690,29 @@ def main():
         database.log_interaction(user_id, "voice_memo_added", str(memo_id), username)
 
         await update.message.reply_text(
-            f"✅ Памятка сохранена (id={memo_id}).\n"
-            f"Теперь можно нажать «{MEMO_BUTTON_TEXT}», чтобы получить следующую памятку."
+            f"✅ Памяточка сохранена (id={memo_id}).\n"
+            f"Теперь можно нажать «{MEMO_BUTTON_TEXT}», чтобы получить следующую памяточку."
         )
 
     async def send_next_voice_memo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Пользователь нажал кнопку -> отправляем следующую памятку (1 раз каждую)."""
+        """Пользователь нажал кнопку -> отправляем следующую памяточку (1 раз каждую)."""
         user_id = update.effective_user.id
         username = update.effective_user.username or update.effective_user.first_name
+
+        # Лимит: 1 памяточка в день (кроме админа)
+        if not is_admin(user_id) and database.is_voice_memo_taken_today(user_id):
+            database.log_interaction(user_id, "voice_memo_rate_limited", None, username)
+            await update.message.reply_text(
+                "Ты сегодня уже получила памяточку по носику. Попробуй завтра, милая 💗"
+            )
+            return
 
         memo = database.get_next_voice_memo_for_user(user_id)
         if not memo:
             total, delivered, remaining = database.get_voice_memo_stats_for_user(user_id)
             database.log_interaction(user_id, "voice_memo_empty", f"total={total};delivered={delivered}", username)
             await update.message.reply_text(
-                "📭 Памятки закончились для тебя.\n"
+                "😿 Памяточек по носику нет.\n"
                 "Если я добавлю новые — кнопка снова начнет выдавать их по одной."
             )
             return
@@ -712,7 +720,14 @@ def main():
         memo_id, file_id, created_at = memo
 
         await context.bot.send_voice(chat_id=user_id, voice=file_id)
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="Сладких котят, милая. Я очень сильно тебя люблю!"
+        )
+
         database.mark_voice_memo_delivered(user_id, memo_id)
+        if not is_admin(user_id):
+            database.mark_voice_memo_taken_today(user_id)
         database.log_interaction(user_id, "voice_memo_delivered", str(memo_id), username)
 
     # Ловим voice от админа (загрузка памяток)
@@ -836,7 +851,7 @@ def main():
     
     # Добавляем обработчик для постоянных кнопок ПЕРЕД ConversationHandler
     application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & filters.Regex('^(⏰ Изменить время|⚙️ Настройки|ℹ️ Информация|🏠 Главное меню|🎧 Получить памятку)$'),
+        filters.TEXT & ~filters.COMMAND & filters.Regex('^(⏰ Изменить время|⚙️ Настройки|ℹ️ Информация|🏠 Главное меню|🎧 Получить памятку|💗 Получить памяточку по носику)$'),
         button_text_handler
     ), group=1)
     

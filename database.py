@@ -83,6 +83,16 @@ def init_database():
             FOREIGN KEY (memo_id) REFERENCES voice_memos (id)
         )
     ''')
+
+    # Лимит 1 памяточка в день (кроме админа) — отмечаем факт выдачи на дату
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS voice_memo_daily (
+            user_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            taken_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, date)
+        )
+    ''')
     
     conn.commit()
     conn.close()
@@ -362,6 +372,42 @@ def mark_voice_memo_delivered(user_id: int, memo_id: int):
         INSERT OR IGNORE INTO voice_deliveries (user_id, memo_id, delivered_at)
         VALUES (?, ?, ?)
     ''', (user_id, memo_id, datetime.now().isoformat()))
+
+    conn.commit()
+    conn.close()
+
+
+def is_voice_memo_taken_today(user_id: int) -> bool:
+    """Проверяет, получал ли пользователь памяточку сегодня (для лимита 1/день)."""
+    from datetime import date
+    today = date.today().isoformat()
+
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT 1 FROM voice_memo_daily
+        WHERE user_id = ? AND date = ?
+    ''', (user_id, today))
+
+    result = cursor.fetchone()
+    conn.close()
+
+    return result is not None
+
+
+def mark_voice_memo_taken_today(user_id: int):
+    """Отмечает, что пользователь получил памяточку сегодня (для лимита 1/день)."""
+    from datetime import date
+    today = date.today().isoformat()
+
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        INSERT OR REPLACE INTO voice_memo_daily (user_id, date, taken_at)
+        VALUES (?, ?, ?)
+    ''', (user_id, today, datetime.now().isoformat()))
 
     conn.commit()
     conn.close()
