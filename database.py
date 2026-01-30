@@ -63,6 +63,26 @@ def init_database():
             timestamp TEXT NOT NULL
         )
     ''')
+
+    # Голосовые памятки (общий пул)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS voice_memos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_id TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    ''')
+
+    # Выдача памяток пользователям (чтобы каждому отдавать каждую памятку один раз)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS voice_deliveries (
+            user_id INTEGER NOT NULL,
+            memo_id INTEGER NOT NULL,
+            delivered_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, memo_id),
+            FOREIGN KEY (memo_id) REFERENCES voice_memos (id)
+        )
+    ''')
     
     conn.commit()
     conn.close()
@@ -294,3 +314,71 @@ def get_all_users_data():
     return results
 
 
+# --- Голосовые памятки ---
+
+def add_voice_memo(file_id: str) -> int:
+    """Сохраняет голосовую памятку (file_id Telegram). Возвращает id записи."""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        INSERT INTO voice_memos (file_id, created_at)
+        VALUES (?, ?)
+    ''', (file_id, datetime.now().isoformat()))
+
+    memo_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+
+    return memo_id
+
+
+def get_next_voice_memo_for_user(user_id: int):
+    """Берет следующую (самую раннюю) памятку, которую пользователь еще не получал."""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT vm.id, vm.file_id, vm.created_at
+        FROM voice_memos vm
+        LEFT JOIN voice_deliveries vd
+               ON vd.memo_id = vm.id AND vd.user_id = ?
+        WHERE vd.memo_id IS NULL
+        ORDER BY vm.id ASC
+        LIMIT 1
+    ''', (user_id,))
+
+    row = cursor.fetchone()
+    conn.close()
+    return row
+
+
+def mark_voice_memo_delivered(user_id: int, memo_id: int):
+    """Отмечает, что памятка выдана пользователю (один раз)."""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        INSERT OR IGNORE INTO voice_deliveries (user_id, memo_id, delivered_at)
+        VALUES (?, ?, ?)
+    ''', (user_id, memo_id, datetime.now().isoformat()))
+
+    conn.commit()
+    conn.close()
+
+
+def get_voice_memo_stats_for_user(user_id: int) -> tuple[int, int, int]:
+    """(total, delivered, remaining)"""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT COUNT(*) FROM voice_memos')
+    total = cursor.fetchone()[0]
+
+    cursor.execute('SELECT COUNT(*) FROM voice_deliveries WHERE user_id = ?', (user_id,))
+    delivered = cursor.fetchone()[0]
+
+    remaining = max(total - delivered, 0)
+
+    conn.close()
+    return total, delivered, remaining
