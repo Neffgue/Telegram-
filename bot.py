@@ -33,12 +33,15 @@ logging.getLogger('apscheduler.scheduler').setLevel(logging.WARNING)
 # Состояния для ConversationHandler
 SELECTING_TIME, CONFIRMING_TIME = range(2)
 
+MEMO_BUTTON_TEXT = "🎧 Получить памятку"
+
 # Создаем постоянную клавиатуру с кнопками меню
 def get_main_keyboard():
     """Возвращает постоянную клавиатуру с кнопками меню"""
     keyboard = [
         [KeyboardButton("⏰ Изменить время"), KeyboardButton("⚙️ Настройки")],
-        [KeyboardButton("ℹ️ Информация"), KeyboardButton("🏠 Главное меню")]
+        [KeyboardButton("ℹ️ Информация"), KeyboardButton("🏠 Главное меню")],
+        [KeyboardButton(MEMO_BUTTON_TEXT)]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, is_persistent=True)
 
@@ -668,6 +671,52 @@ def main():
     
     # Создание приложения
     application = Application.builder().token(config.BOT_TOKEN).build()
+
+    def is_admin(user_id: int) -> bool:
+        return user_id in getattr(config, 'ADMIN_USER_IDS', set())
+
+    async def admin_voice_upload_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Админ отправляет voice -> сохраняем как памятку"""
+        if not update.message or not update.message.voice:
+            return
+        user_id = update.effective_user.id
+        if not is_admin(user_id):
+            return
+
+        file_id = update.message.voice.file_id
+        memo_id = database.add_voice_memo(file_id)
+
+        username = update.effective_user.username or update.effective_user.first_name
+        database.log_interaction(user_id, "voice_memo_added", str(memo_id), username)
+
+        await update.message.reply_text(
+            f"✅ Памятка сохранена (id={memo_id}).\n"
+            f"Теперь можно нажать «{MEMO_BUTTON_TEXT}», чтобы получить следующую памятку."
+        )
+
+    async def send_next_voice_memo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Пользователь нажал кнопку -> отправляем следующую памятку (1 раз каждую)."""
+        user_id = update.effective_user.id
+        username = update.effective_user.username or update.effective_user.first_name
+
+        memo = database.get_next_voice_memo_for_user(user_id)
+        if not memo:
+            total, delivered, remaining = database.get_voice_memo_stats_for_user(user_id)
+            database.log_interaction(user_id, "voice_memo_empty", f"total={total};delivered={delivered}", username)
+            await update.message.reply_text(
+                "📭 Памятки закончились для тебя.\n"
+                "Если я добавлю новые — кнопка снова начнет выдавать их по одной."
+            )
+            return
+
+        memo_id, file_id, created_at = memo
+
+        await context.bot.send_voice(chat_id=user_id, voice=file_id)
+        database.mark_voice_memo_delivered(user_id, memo_id)
+        database.log_interaction(user_id, "voice_memo_delivered", str(memo_id), username)
+
+    # Ловим voice от админа (загрузка памяток)
+    application.add_handler(MessageHandler(filters.VOICE, admin_voice_upload_handler), group=0)
     
     # Обработчики для постоянных кнопок меню (добавляем ПЕРЕД ConversationHandler)
     async def button_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -683,6 +732,9 @@ def main():
         elif text == "ℹ️ Информация":
             await info_handler(update, context)
             # Возвращаем ConversationHandler.END чтобы завершить текущий диалог
+            return ConversationHandler.END
+        elif text == MEMO_BUTTON_TEXT:
+            await send_next_voice_memo_handler(update, context)
             return ConversationHandler.END
         elif text == "🏠 Главное меню":
             # Возвращаемся к главному меню
@@ -784,7 +836,7 @@ def main():
     
     # Добавляем обработчик для постоянных кнопок ПЕРЕД ConversationHandler
     application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & filters.Regex('^(⏰ Изменить время|⚙️ Настройки|ℹ️ Информация|🏠 Главное меню)$'),
+        filters.TEXT & ~filters.COMMAND & filters.Regex('^(⏰ Изменить время|⚙️ Настройки|ℹ️ Информация|🏠 Главное меню|🎧 Получить памятку)$'),
         button_text_handler
     ), group=1)
     
@@ -1291,4 +1343,3 @@ async def run_bot_with_start_polling():
 
 if __name__ == '__main__':
     main()
-
