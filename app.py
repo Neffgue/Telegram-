@@ -1,98 +1,117 @@
+"""WSGI приложение для хостинга.
+
+Поднимает Flask (health endpoints) и запускает Telegram-бота в отдельном потоке.
+Дополнительно "подмешивает" админ-команды (без правок в bot.py), чтобы:
+- /memos [N] — список последних памяток
+- /memo_delete <id> — удалить памятку
+- /db_backup — отправить текущий pillow_bot.db
+- /db_restore — включить режим восстановления, затем отправить .db файлом
 """
-WSGI приложение для хостинга
-Запускает веб-сервер и бота в отдельном потоке
-"""
-import threading
-import logging
+
 import asyncio
+import logging
+import threading
+
 from flask import Flask
 
-# Настраиваем логирование
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Создаем Flask приложение
 app = Flask(__name__)
+
 
 @app.route('/')
 def health_check():
-    """Health check endpoint для хостинга"""
     return {'status': 'ok', 'message': 'Telegram bot is running'}, 200
+
 
 @app.route('/health')
 def health():
-    """Дополнительный health check endpoint"""
     return {'status': 'healthy'}, 200
 
+
+_bot_started = False
+_lock = threading.Lock()
+
+
 def run_bot_in_thread():
-    """Запускает бота в отдельном потоке"""
+    """Запускает бота в отдельном потоке (без signal handlers)."""
     try:
-        from telegram.ext import Application
+        from telegram.ext import Application, CommandHandler, MessageHandler, filters
+
         import bot
-        import config
-        
+        import admin_tools
+
         # Создаем новый event loop для этого потока
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        
-        # Переопределяем run_polling для работы без обработки сигналов
-        original_run_polling = Application.run_polling
-        
+
+        # 1) Внедряем админские handlers в каждый Application, созданный через Application.builder().build()
+        original_builder = Application.builder
+
+        def patched_builder(*args, **kwargs):
+            builder = original_builder(*args, **kwargs)
+            original_build = builder.build
+
+            def patched_build(*b_args, **b_kwargs):
+                application = original_build(*b_args, **b_kwargs)
+
+                application.add_handler(CommandHandler('memos', admin_tools.cmd_memos))
+                application.add_handler(CommandHandler('memo_delete', admin_tools.cmd_memo_delete))
+                application.add_handler(CommandHandler('db_backup', admin_tools.cmd_db_backup))
+                application.add_handler(CommandHandler('db_restore', admin_tools.cmd_db_restore))
+                application.add_handler(
+                    MessageHandler(filters.Document.ALL, admin_tools.handle_db_restore_document),
+                    group=0
+                )
+
+                return application
+
+            builder.build = patched_build
+            return builder
+
+        Application.builder = patched_builder
+
+        # 2) Патчим run_polling, чтобы не пытался регистрировать сигналы (в thread это падает)
         def patched_run_polling(self, *args, **kwargs):
-            """Патч для run_polling, который работает в отдельном потоке"""
-            async def run():
+            async def runner():
                 async with self:
                     await self.start()
-                    logger.info(f"Application started, handlers count: {len(self.handlers[0])}")
-                    # Явно вызываем post_init если он установлен
-                    if hasattr(self, 'post_init') and self.post_init:
-                        logger.info("Calling post_init...")
+
+                    # post_init используется в bot.py для загрузки напоминаний
+                    if getattr(self, 'post_init', None):
                         await self.post_init(self)
-                    logger.info("Starting polling...")
+
                     await self.updater.start_polling(*args, **kwargs)
-                    logger.info("Bot is running in thread...")
-                    # Ожидаем бесконечно без обработки сигналов
+                    logger.info('Bot is running in thread...')
+
                     stop_event = asyncio.Event()
                     await stop_event.wait()
-            
-            try:
-                loop.run_until_complete(run())
-            except KeyboardInterrupt:
-                logger.info("Bot stopping...")
-            except Exception as e:
-                logger.error(f"Error in bot: {e}", exc_info=True)
-        
-        # Применяем патч перед импортом bot.main
+
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(runner())
+
         Application.run_polling = patched_run_polling
-        
-        # Теперь вызываем main, который создаст application и вызовет run_polling
-        # Патч сработает для всех экземпляров Application
+
+        # Запускаем исходный bot.main() — он создаст Application и вызовет run_polling()
         bot.main()
-        
+
     except Exception as e:
-        logger.error(f"Error running bot: {e}", exc_info=True)
-        import traceback
-        traceback.print_exc()
+        logger.error(f'Bot thread crashed: {e}', exc_info=True)
 
-# Запускаем бота в отдельном потоке
-bot_thread = None
 
-def start_bot():
-    """Запускает бота в фоновом потоке"""
-    global bot_thread
-    if bot_thread is None or not bot_thread.is_alive():
-        bot_thread = threading.Thread(target=run_bot_in_thread, daemon=True)
-        bot_thread.start()
-        logger.info("Bot thread started")
+def _ensure_bot_started():
+    global _bot_started
+    with _lock:
+        if _bot_started:
+            return
+        t = threading.Thread(target=run_bot_in_thread, daemon=True)
+        t.start()
+        _bot_started = True
 
-# Запускаем бота при импорте модуля (для WSGI серверов)
-start_bot()
 
-if __name__ == '__main__':
-    # Если запускается напрямую, запускаем Flask сервер
-    logger.info("Starting Flask server and bot...")
-    start_bot()
-    app.run(host='0.0.0.0', port=8080, debug=False)
+# Стартуем бота при импорте модуля (обычно 1 раз на процесс)
+_ensure_bot_started()
